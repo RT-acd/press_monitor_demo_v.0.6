@@ -801,7 +801,7 @@ function setStatus(newStatus) {
     statusChip.classList.add('st-IDLE');
     clockSub.innerText = '一時停止中';
     rateBox.classList.remove('active');
-    runBtn.className = 'modebtn mb-running is-on pointer-events-none rounded-xl flex flex-col justify-center items-center gap-0.5 active:scale-95 transition-all shadow-lg';
+    runBtn.className = 'modebtn mb-running is-on rounded-xl flex flex-col justify-center items-center gap-0.5 active:scale-95 transition-all shadow-lg';
     runIcon.className = 'fa-solid fa-circle-play text-3xl sm:text-4xl';
     runText.innerText = '稼働再開';
     return;
@@ -822,7 +822,7 @@ function setStatus(newStatus) {
 
     if (newStatus === 'RUNNING') {
       clockSub.innerText = '稼働中';
-      runBtn.className = 'modebtn mb-pause is-on pointer-events-none rounded-xl flex flex-col justify-center items-center gap-0.5 active:scale-95 transition-all shadow-lg';
+      runBtn.className = 'modebtn mb-pause is-on rounded-xl flex flex-col justify-center items-center gap-0.5 active:scale-95 transition-all shadow-lg';
       runIcon.className = 'fa-solid fa-circle-pause text-3xl sm:text-4xl';
       runText.innerText = '一時停止';
     } else {
@@ -833,7 +833,7 @@ function setStatus(newStatus) {
 }
 
 function resetRunButton(label = '稼働中') {
-  runBtn.className = 'modebtn mb-running rounded-xl flex flex-col justify-center items-center gap-0.5 active:scale-95 transition-all pointer-events-none shadow-lg';
+  runBtn.className = 'modebtn mb-running rounded-xl flex flex-col justify-center items-center gap-0.5 active:scale-95 transition-all shadow-lg';
   runIcon.className = 'fa-solid fa-circle-play text-3xl sm:text-4xl';
   runText.innerText = label;
 }
@@ -973,7 +973,7 @@ function persistHistory() {
 async function gasRequest(url, payload) {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // シンプルリクエストにしてCORSプリフライトを回避
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1158,7 +1158,7 @@ function saveEditedRecord() {
     rec.perfRate = '100.0';
   }
 
-  rec.syncStatus = 'pending'; // 修正後は再同期が必要
+  rec.syncStatus = 'pending';
   persistHistory();
   renderHistoryTable();
   updateSyncBadge();
