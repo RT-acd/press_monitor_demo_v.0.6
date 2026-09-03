@@ -4,7 +4,6 @@
 
 let settings = loadSettings();
 let masters = loadMasters();
-let selectedOperatorNames = new Set();
 
 let state = {
   isShiftActive: false,
@@ -48,7 +47,13 @@ const targetInput = document.getElementById('target-count');
 const targetDisplayVal = document.getElementById('target-val');
 const reportEmailInput = document.getElementById('report-email');
 const equipmentSelect = document.getElementById('equipment-select');
-const operatorGroupEl = document.getElementById('operator-btn-group');
+const opSlotInputs = [
+  document.getElementById('op-slot-0'),
+  document.getElementById('op-slot-1'),
+  document.getElementById('op-slot-2'),
+  document.getElementById('op-slot-3'),
+];
+const operatorDatalist = document.getElementById('operator-master-list');
 
 /* =========================================================
    初期化
@@ -57,7 +62,7 @@ window.onload = function () {
   applySettingsToUI();
   renderEquipmentOptions();
   renderPartOptions();
-  renderOperatorButtons();
+  renderOperatorDatalist();
   renderMasterStatus();
 
   try {
@@ -91,11 +96,9 @@ window.onload = function () {
   const savedEquip = localStorage.getItem('pm_last_equipment_v1');
   if (savedEquip && settings.equipmentList.includes(savedEquip)) equipmentSelect.value = savedEquip;
 
-  // 作業員チップの選択判定はイベント委任で行う（マスタの人数が変動するため）
-  operatorGroupEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-op-name]');
-    if (!btn) return;
-    toggleOperatorSelect(btn.dataset.opName);
+  // 作業員4窓の入力補助（予測変換の候補はrenderOperatorDatalistで供給）
+  opSlotInputs.forEach(input => {
+    input.addEventListener('change', () => input.value = input.value.trim());
   });
 
   lastTickTime = Date.now();
@@ -228,37 +231,19 @@ function saveSettings() {
 /* =========================================================
    作業員（クラウドマスタから選択）
    ========================================================= */
-function renderOperatorButtons() {
+function renderOperatorDatalist() {
   const list = masters.operators || [];
-  if (list.length === 0) {
-    operatorGroupEl.innerHTML = '<p class="text-[10px] text-slate-500 col-span-2 leading-relaxed">作業員マスタが未取得です。設定画面から「マスタを再取得」してください。</p>';
-    return;
-  }
-  const limitReached = selectedOperatorNames.size >= CONFIG.MAX_SELECTED_OPERATORS;
-  operatorGroupEl.innerHTML = list.map(name => {
-    const isOn = selectedOperatorNames.has(name);
-    const dim = (!isOn && limitReached) ? 'opacity-40' : '';
-    return `<button type="button" data-op-name="${escapeHtml(name)}" class="op-chip py-1.5 px-1 rounded-lg text-[11px] font-bold text-center truncate ${isOn ? 'on' : ''} ${dim}">${escapeHtml(name)}</button>`;
-  }).join('');
-}
-function toggleOperatorSelect(name) {
-  if (selectedOperatorNames.has(name)) {
-    selectedOperatorNames.delete(name);
-  } else {
-    if (selectedOperatorNames.size >= CONFIG.MAX_SELECTED_OPERATORS) {
-      showToast(`作業員は同時に最大${CONFIG.MAX_SELECTED_OPERATORS}人まで選択できます`, true);
-      return;
-    }
-    selectedOperatorNames.add(name);
-  }
-  renderOperatorButtons();
+  operatorDatalist.innerHTML = list.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
 }
 function getSelectedOperatorsText() {
-  const names = (masters.operators || []).filter(n => selectedOperatorNames.has(n));
+  const names = opSlotInputs.map(i => i.value.trim()).filter(n => n);
   return names.length ? names.join('・') : '未選択';
 }
 function getSelectedOperatorsCount() {
-  return selectedOperatorNames.size || 1;
+  return opSlotInputs.filter(i => i.value.trim()).length;
+}
+function clearOperatorSlots() {
+  opSlotInputs.forEach(i => i.value = '');
 }
 
 /* =========================================================
@@ -417,7 +402,7 @@ function executeResetSilently() {
   state.breakSeconds = 0;
   state.stopSeconds = 0;
   state.accumulatedCount = 0;
-  selectedOperatorNames.clear();
+  clearOperatorSlots();
 
   document.querySelectorAll('.modebtn').forEach(b => { b.classList.remove('is-on'); b.classList.add('pointer-events-none'); });
   statusChip.className = 'status-chip st-IDLE';
@@ -435,7 +420,6 @@ function executeResetSilently() {
   btnStartShift.classList.remove('opacity-50', 'pointer-events-none');
   btnEndShift.classList.add('opacity-50', 'pointer-events-none');
   resetRunButton('稼働中');
-  renderOperatorButtons();
 }
 
 function openResetModal() { showModal('reset-modal'); }
