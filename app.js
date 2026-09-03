@@ -97,8 +97,10 @@ window.onload = function () {
   if (savedEquip && settings.equipmentList.includes(savedEquip)) equipmentSelect.value = savedEquip;
 
   // 作業員4窓の入力補助（予測変換の候補はrenderOperatorDatalistで供給）
+  // マスタに一致しない名前が入力された場合は枠を赤くする（保存はブロックしない弱い警告）
   opSlotInputs.forEach(input => {
-    input.addEventListener('change', () => input.value = input.value.trim());
+    input.addEventListener('input', () => clearOperatorSlotWarning(input));
+    input.addEventListener('change', () => { input.value = input.value.trim(); validateOperatorSlot(input); });
   });
 
   lastTickTime = Date.now();
@@ -234,6 +236,17 @@ function saveSettings() {
 function renderOperatorDatalist() {
   const list = masters.operators || [];
   operatorDatalist.innerHTML = list.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+  opSlotInputs.forEach(input => validateOperatorSlot(input)); // マスタ更新後、既存入力を再チェック
+}
+function clearOperatorSlotWarning(input) {
+  input.classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/40');
+}
+function validateOperatorSlot(input) {
+  const val = input.value.trim();
+  if (!val) { clearOperatorSlotWarning(input); return; }
+  const isMatch = (masters.operators || []).includes(val);
+  if (isMatch) clearOperatorSlotWarning(input);
+  else { input.classList.add('border-rose-500', 'ring-2', 'ring-rose-500/40'); }
 }
 function getSelectedOperatorsText() {
   const names = opSlotInputs.map(i => i.value.trim()).filter(n => n);
@@ -243,7 +256,7 @@ function getSelectedOperatorsCount() {
   return opSlotInputs.filter(i => i.value.trim()).length;
 }
 function clearOperatorSlots() {
-  opSlotInputs.forEach(i => i.value = '');
+  opSlotInputs.forEach(i => { i.value = ''; clearOperatorSlotWarning(i); });
 }
 
 /* =========================================================
