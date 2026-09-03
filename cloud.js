@@ -14,7 +14,11 @@ async function gasRequest(url, payload) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch (e) {}
+    throw new Error('HTTP ' + res.status + (detail ? ': ' + detail.slice(0, 300) : ''));
+  }
   return res.json();
 }
 
@@ -118,10 +122,11 @@ async function fetchMastersFromCloud(showFeedback) {
       renderMasterStatus();
       if (showFeedback) showToast(`マスタデータを更新しました（品番${masters.partMasters.length}件／作業員${masters.operators.length}名）`);
     } else {
-      if (showFeedback) showToast('マスタデータの取得に失敗しました', true);
+      if (showFeedback) showToast('マスタデータの取得に失敗しました：' + (res && res.message ? res.message : '不明なエラー'), true);
     }
   } catch (e) {
-    if (showFeedback) showToast('マスタデータの取得に失敗しました（通信環境をご確認ください）', true);
+    console.error('fetchMastersFromCloud failed:', e);
+    if (showFeedback) showToast('マスタデータの取得に失敗しました（通信環境をご確認ください。詳細はブラウザのコンソールに出力しています）', true);
   }
 }
 
