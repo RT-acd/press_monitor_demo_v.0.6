@@ -234,12 +234,23 @@ function renderOperatorButtons() {
     operatorGroupEl.innerHTML = '<p class="text-[10px] text-slate-500 col-span-2 leading-relaxed">作業員マスタが未取得です。設定画面から「マスタを再取得」してください。</p>';
     return;
   }
-  operatorGroupEl.innerHTML = list.map(name => `
-    <button type="button" data-op-name="${escapeHtml(name)}" class="op-chip py-1.5 px-1 rounded-lg text-[11px] font-bold text-center truncate ${selectedOperatorNames.has(name) ? 'on' : ''}">${escapeHtml(name)}</button>
-  `).join('');
+  const limitReached = selectedOperatorNames.size >= CONFIG.MAX_SELECTED_OPERATORS;
+  operatorGroupEl.innerHTML = list.map(name => {
+    const isOn = selectedOperatorNames.has(name);
+    const dim = (!isOn && limitReached) ? 'opacity-40' : '';
+    return `<button type="button" data-op-name="${escapeHtml(name)}" class="op-chip py-1.5 px-1 rounded-lg text-[11px] font-bold text-center truncate ${isOn ? 'on' : ''} ${dim}">${escapeHtml(name)}</button>`;
+  }).join('');
 }
 function toggleOperatorSelect(name) {
-  if (selectedOperatorNames.has(name)) selectedOperatorNames.delete(name); else selectedOperatorNames.add(name);
+  if (selectedOperatorNames.has(name)) {
+    selectedOperatorNames.delete(name);
+  } else {
+    if (selectedOperatorNames.size >= CONFIG.MAX_SELECTED_OPERATORS) {
+      showToast(`作業員は同時に最大${CONFIG.MAX_SELECTED_OPERATORS}人まで選択できます`, true);
+      return;
+    }
+    selectedOperatorNames.add(name);
+  }
   renderOperatorButtons();
 }
 function getSelectedOperatorsText() {

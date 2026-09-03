@@ -15,6 +15,7 @@ const CONFIG = {
   PERFORMANCE_NORMAL_LIMIT: 85,
   SYNC_RETRY_INTERVAL_MS: 30000,
   MASTER_AUTO_REFRESH_MS: 10 * 60 * 1000, // 10分ごとにマスタをバックグラウンド再取得
+  MAX_SELECTED_OPERATORS: 4, // 作業員は同時に最大4人まで選択可能
 };
 
 // アプリ固有の設定（クラウド接続情報など）。gasUrl未設定時はクラウド機能は使えません。
