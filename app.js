@@ -18,6 +18,9 @@ let state = {
   settingSPM: 15.0,
   targetCount: CONFIG.INITIAL_TARGET_COUNT,
   partNo: '',
+  segments: [], // 「人数変更を記録」で確定した区間の履歴（シフト内）
+  segmentBaseline: { runningSeconds: 0, moldSeconds: 0, breakSeconds: 0, stopSeconds: 0, accumulatedCount: 0 },
+  segmentStartTime: null,
 };
 
 let historyLogs = [];
@@ -376,6 +379,13 @@ function startMfg() {
 
   setStatus('IDLE');
   clockSub.innerText = '稼働開始ボタンを押してください';
+
+  state.segments = [];
+  state.segmentBaseline = { runningSeconds: 0, moldSeconds: 0, breakSeconds: 0, stopSeconds: 0, accumulatedCount: 0 };
+  state.segmentStartTime = state.startTime;
+  document.getElementById('btn-record-segment').classList.remove('pointer-events-none', 'opacity-50');
+  updateSegmentStatusLabel();
+
   showToast('製造を開始しました');
 }
 
@@ -416,6 +426,11 @@ function executeResetSilently() {
   state.stopSeconds = 0;
   state.accumulatedCount = 0;
   clearOperatorSlots();
+  state.segments = [];
+  state.segmentBaseline = { runningSeconds: 0, moldSeconds: 0, breakSeconds: 0, stopSeconds: 0, accumulatedCount: 0 };
+  state.segmentStartTime = null;
+  document.getElementById('btn-record-segment').classList.add('pointer-events-none', 'opacity-50');
+  document.getElementById('segment-status').innerText = '';
 
   document.querySelectorAll('.modebtn').forEach(b => { b.classList.remove('is-on'); b.classList.add('pointer-events-none'); });
   statusChip.className = 'status-chip st-IDLE';
@@ -440,8 +455,62 @@ function closeResetModal() { hideModal('reset-modal'); }
 function confirmReset() { closeResetModal(); executeResetSilently(); showToast('本日の稼働データをリセットしました'); }
 
 /* =========================================================
-   日報保存＋クラウド同期
+   人数変更の区間管理
+   「人数変更を記録」ボタンが押されるたびに、それまでの区間を1件として確定し、
+   そこから新しい区間の集計を始める。ボタンを一度も押さない場合は、
+   シフト全体で1区間として扱われる（従来動作との互換性）。
    ========================================================= */
+function buildSegmentFromBaseline(endTime) {
+  const b = state.segmentBaseline;
+  const runningSec = Math.max(0, Math.round(state.runningSeconds - b.runningSeconds));
+  const moldSec = Math.max(0, Math.round(state.moldSeconds - b.moldSeconds));
+  const breakSec = Math.max(0, Math.round(state.breakSeconds - b.breakSeconds));
+  const stopSec = Math.max(0, Math.round(state.stopSeconds - b.stopSeconds));
+  const count = Math.max(0, Math.round(state.accumulatedCount - b.accumulatedCount));
+  const activeSec = runningSec + moldSec + stopSec;
+  let perfRate = '100.0';
+  if (activeSec > 0 && state.settingSPM > 0) {
+    const stdCT = 60 / state.settingSPM;
+    perfRate = Math.min((stdCT * count) / activeSec * 100, 200.0).toFixed(1);
+  }
+  return {
+    start: state.segmentStartTime ? state.segmentStartTime.toTimeString().split(' ')[0] : '未記録',
+    end: endTime.toTimeString().split(' ')[0],
+    operator: getSelectedOperatorsText(),
+    workerCount: getSelectedOperatorsCount(),
+    partNo: state.partNo || (partNoSelect ? partNoSelect.value : '') || '未設定',
+    runningSec, moldSec, breakSec, stopSec, count, perfRate,
+  };
+}
+
+function recordSegmentChange() {
+  if (!state.isShiftActive) { showToast('製造中のみ記録できます', true); return; }
+  const now = new Date();
+  const seg = buildSegmentFromBaseline(now);
+  state.segments.push(seg);
+  state.segmentBaseline = {
+    runningSeconds: state.runningSeconds,
+    moldSeconds: state.moldSeconds,
+    breakSeconds: state.breakSeconds,
+    stopSeconds: state.stopSeconds,
+    accumulatedCount: state.accumulatedCount,
+  };
+  state.segmentStartTime = now;
+  updateSegmentStatusLabel();
+  showToast(`区間を記録しました（${seg.start}〜${seg.end}／${seg.workerCount}名／稼働率${seg.perfRate}%）`);
+}
+
+function updateSegmentStatusLabel() {
+  const el = document.getElementById('segment-status');
+  if (!el) return;
+  const doneCount = state.segments.length;
+  const currentStart = state.segmentStartTime ? state.segmentStartTime.toTimeString().split(' ')[0] : '--:--:--';
+  el.innerText = doneCount > 0
+    ? `記録済み区間: ${doneCount}件／現在の区間: ${currentStart}〜`
+    : `現在の区間: ${currentStart}〜`;
+}
+
+
 function saveCurrentToHistory(finalCount, materialCount, scrapCount, stopReason) {
   const today = new Date();
   const dateStr = today.getFullYear() + '/' + String(today.getMonth() + 1).padStart(2, '0') + '/' + String(today.getDate()).padStart(2, '0');
@@ -474,6 +543,10 @@ function saveCurrentToHistory(finalCount, materialCount, scrapCount, stopReason)
     stopSec: Math.floor(state.stopSeconds),
     perfRate: calculatedRate,
     syncStatus: 'pending',
+    // 「人数変更を記録」で確定済みの区間 + シフト終了時点までの最終区間
+    // ※ 区間ごとの生産数は自動集計ベース。上のcount（confirmEndMfgでの手動補正後の確定値）とは
+    //   一致しない場合がある（最終区間のみ誤差が乗る想定）。
+    segments: [...state.segments, buildSegmentFromBaseline(state.endTime || new Date())],
   };
 
   historyLogs.unshift(record);
@@ -516,14 +589,19 @@ function syncStatusIcon(rec) {
 function renderHistoryTable() {
   const tbody = document.getElementById('history-body');
   if (historyLogs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="18" class="p-6 text-center text-slate-500 font-bold">保存された日報データはありません。</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="19" class="p-6 text-center text-slate-500 font-bold">保存された日報データはありません。</td></tr>';
     return;
   }
   tbody.innerHTML = historyLogs.map(rec => {
     const isChecked = checkedRecordIds.has(rec.id);
-    return `
+    const hasSegments = Array.isArray(rec.segments) && rec.segments.length > 1;
+    const toggleCell = hasSegments
+      ? `<button onclick="toggleSegmentDetail(${rec.id})" id="seg-toggle-${rec.id}" class="text-emerald-400 hover:text-emerald-300 w-full text-center"><i class="fa-solid fa-caret-right"></i></button>`
+      : `<span class="text-slate-700 block text-center">－</span>`;
+    const mainRow = `
       <tr class="row-hover transition-all ${isChecked ? 'bg-white/5' : ''}">
         <td class="p-2 text-center" onclick="event.stopPropagation()"><input type="checkbox" value="${rec.id}" ${isChecked ? 'checked' : ''} onclick="toggleRecordCheck(${rec.id}, this)" class="w-4 h-4 rounded border-slate-700 bg-black text-emerald-500"></td>
+        <td class="p-2 text-center" onclick="event.stopPropagation()">${toggleCell}</td>
         <td class="p-2 font-mono text-white">${rec.date}</td>
         <td class="p-2 font-mono text-amber-300 font-bold">${escapeHtml(rec.operator || '未選択')}</td>
         <td class="p-2 font-mono text-center text-amber-200 font-bold">${rec.workerCount || 1}名</td>
@@ -547,8 +625,41 @@ function renderHistoryTable() {
           </div>
         </td>
       </tr>`;
+    const detailRow = hasSegments ? `
+      <tr class="hidden bg-black/40" id="seg-detail-${rec.id}">
+        <td></td>
+        <td colspan="18" class="p-2">
+          <p class="text-[10px] font-black text-emerald-400 mb-1"><i class="fa-solid fa-people-group mr-1"></i>人数変更の区間内訳（${rec.segments.length}件）</p>
+          <table class="w-full text-[11px] border-collapse">
+            <thead><tr class="text-slate-500 border-b border-line">
+              <th class="p-1 text-left">開始</th><th class="p-1 text-left">終了</th><th class="p-1 text-left">作業員</th>
+              <th class="p-1 text-center">人数</th><th class="p-1 text-right">生産数</th><th class="p-1 text-right">性能稼働率</th>
+            </tr></thead>
+            <tbody>
+              ${rec.segments.map(seg => `
+                <tr class="border-b border-line/50">
+                  <td class="p-1 font-mono">${seg.start}</td>
+                  <td class="p-1 font-mono">${seg.end}</td>
+                  <td class="p-1 font-mono text-amber-300">${escapeHtml(seg.operator || '未選択')}</td>
+                  <td class="p-1 text-center font-mono text-amber-200">${seg.workerCount || 1}名</td>
+                  <td class="p-1 text-right font-mono">${seg.count}</td>
+                  <td class="p-1 text-right font-mono text-emerald-400 font-bold">${seg.perfRate}%</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </td>
+      </tr>` : '';
+    return mainRow + detailRow;
   }).join('');
   updateMasterCheckboxState();
+}
+
+function toggleSegmentDetail(id) {
+  const row = document.getElementById('seg-detail-' + id);
+  const icon = document.querySelector(`#seg-toggle-${id} i`);
+  if (!row) return;
+  row.classList.toggle('hidden');
+  if (icon) icon.className = row.classList.contains('hidden') ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down';
 }
 
 /* ---- 編集モーダル ---- */
@@ -650,6 +761,24 @@ function generateExcelWorkbook(selectedLogs, currentEquip) {
   ws['!cols'] = [12,16,18,10,16,12,12,12,12,14,20,14,14,14,14,14].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '作業日報');
+
+  // 区間内訳シート（人数変更を記録した内容。未使用の記録は1区間のみ＝シフト全体として出力される）
+  const segSheetData = [
+    ['作業員区間内訳（人数変更の記録単位）'],
+    ['日付', '設備名', '部品番号', '区間開始', '区間終了', '作業員', '人数', '生産数(pcs)', '性能稼働率(%)'],
+  ];
+  selectedLogs.forEach(rec => {
+    (rec.segments && rec.segments.length ? rec.segments : []).forEach(seg => {
+      segSheetData.push([
+        rec.date, rec.equipment || currentEquip, seg.partNo || rec.partNo, seg.start, seg.end,
+        seg.operator || '未選択', seg.workerCount || 1, seg.count || 0, parseFloat(seg.perfRate) || 0,
+      ]);
+    });
+  });
+  const segWs = XLSX.utils.aoa_to_sheet(segSheetData);
+  segWs['!cols'] = [12,16,14,10,10,18,8,12,14].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, segWs, '作業員区間データ');
+
   return wb;
 }
 

@@ -13,6 +13,7 @@
  */
 
 const SHEET_NAME = '日報データ';
+const SEGMENT_SHEET_NAME = '作業員区間データ';
 const PART_MASTER_SHEET = '品番マスタ';
 const OPERATOR_MASTER_SHEET = '作業員マスタ';
 
@@ -86,7 +87,38 @@ function handleSaveRecord(record) {
     sheet.appendRow(row);
   }
 
+  writeSegmentRows(record);
+
   return jsonResponse({ status: 'ok', id: record.id });
+}
+
+/**
+ * 「人数変更を記録」で確定した区間データを、別シート（作業員区間データ）へ書き込む。
+ * 同じレコードIDの既存行があれば一旦削除してから書き直す（日報の編集・再送信に対応）。
+ */
+function writeSegmentRows(record) {
+  if (!record.segments || record.segments.length === 0) return;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SEGMENT_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SEGMENT_SHEET_NAME);
+    sheet.appendRow(['受信日時', '元レコードID', '日付', '設備名', '部品番号', '区間開始', '区間終了', '作業員', '人数', '生産数(pcs)', '性能稼働率(%)']);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, 11).setFontWeight('bold').setBackground('#1a2233').setFontColor('#ffffff');
+  }
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][1]) === String(record.id)) sheet.deleteRow(i + 1);
+  }
+
+  record.segments.forEach(seg => {
+    sheet.appendRow([
+      new Date(), record.id, record.date, record.equipment || '', seg.partNo || record.partNo || '',
+      seg.start, seg.end, seg.operator || '未選択', seg.workerCount || 1, seg.count || 0, seg.perfRate || '',
+    ]);
+  });
 }
 
 function recordToRow(rec) {
@@ -300,6 +332,24 @@ function buildExcelBlob(records, equipment) {
   );
   sheet.getRange(3, 1, 1, header.length).setFontWeight('bold').setBackground('#1a2233').setFontColor('#ffffff');
   sheet.autoResizeColumns(1, header.length);
+
+  // 区間内訳シート（人数変更の記録単位。未記録の日報は1区間＝シフト全体として出力される）
+  const segSheet = tempSs.insertSheet('作業員区間データ');
+  const segHeader = ['日付', '設備名', '部品番号', '区間開始', '区間終了', '作業員', '人数', '生産数(pcs)', '性能稼働率(%)'];
+  const segRows = [segHeader];
+  records.forEach(rec => {
+    (rec.segments || []).forEach(seg => {
+      segRows.push([
+        rec.date, rec.equipment || currentEquip, seg.partNo || rec.partNo, seg.start, seg.end,
+        seg.operator || '未選択', seg.workerCount || 1, seg.count || 0, parseFloat(seg.perfRate) || 0,
+      ]);
+    });
+  });
+  if (segRows.length > 1) {
+    segSheet.getRange(1, 1, segRows.length, segHeader.length).setValues(segRows);
+    segSheet.getRange(1, 1, 1, segHeader.length).setFontWeight('bold').setBackground('#1a2233').setFontColor('#ffffff');
+    segSheet.autoResizeColumns(1, segHeader.length);
+  }
   SpreadsheetApp.flush();
 
   const fileId = tempSs.getId();

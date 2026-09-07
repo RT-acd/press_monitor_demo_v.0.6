@@ -125,6 +125,10 @@ tailwind.config = {
           </div>
           <p class="text-[8px] text-slate-500 mt-0.5">枠が赤い場合はマスタに未登録の名前です（保存は可能です）</p>
           <datalist id="operator-master-list"></datalist>
+          <button onclick="recordSegmentChange()" id="btn-record-segment" class="mt-1 w-full bg-panel border border-line hover:bg-slate-700 text-slate-300 text-[10px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1.5 pointer-events-none opacity-50 transition-all active:scale-95">
+            <i class="fa-solid fa-people-arrows"></i>人数変更を記録
+          </button>
+          <p id="segment-status" class="text-[8px] text-slate-500 mt-0.5 truncate"></p>
         </div>
       </div>
 
@@ -219,6 +223,7 @@ tailwind.config = {
         <thead>
           <tr class="bg-panel2 text-slate-400 border-b border-line sticky top-0 z-10">
             <th class="p-2 font-bold text-center w-8"><input type="checkbox" id="check-all" onclick="toggleSelectAll(this)" class="w-4 h-4 rounded border-slate-700 bg-black text-emerald-500"></th>
+            <th class="p-2 font-bold text-center w-8">内訳</th>
             <th class="p-2 font-bold">日付</th>
             <th class="p-2 font-bold text-amber-400">作業員</th>
             <th class="p-2 font-bold text-center text-amber-200">人数</th>
