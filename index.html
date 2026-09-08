@@ -322,8 +322,9 @@ tailwind.config = {
         <input type="number" id="modal-scrap-count" value="0" min="0" class="field w-full py-1.5 px-2 text-sm text-center font-mono">
       </div>
       <div class="col-span-2">
-        <label class="text-rose-300 text-[10px] block mb-1">停止理由（任意）</label>
-        <input type="text" id="modal-stop-reason" placeholder="例: センサー異常・刃具交換等" class="field w-full py-1.5 px-2 text-sm">
+        <label class="text-rose-300 text-[10px] block mb-1">停止理由（カテゴリ）</label>
+        <select id="modal-stop-reason-category" class="field w-full py-1.5 px-2 text-sm mb-1.5"></select>
+        <input type="text" id="modal-stop-reason-detail" placeholder="補足（任意・例: ベアリング付近から異音）" class="field w-full py-1.5 px-2 text-sm">
       </div>
     </div>
     <div class="grid grid-cols-2 gap-3">
@@ -358,7 +359,11 @@ tailwind.config = {
       <div><label class="text-slate-400 block mb-1">生産数（pcs）</label><input type="number" id="edit-count" class="field w-full p-1.5 font-mono"></div>
       <div><label class="text-amber-300 block mb-1">材料交換（回）</label><input type="number" id="edit-material-count" class="field w-full p-1.5 font-mono"></div>
       <div><label class="text-purple-300 block mb-1">スクラップ交換（回）</label><input type="number" id="edit-scrap-count" class="field w-full p-1.5 font-mono"></div>
-      <div class="col-span-2"><label class="text-rose-300 block mb-1">停止理由（自由記述）</label><input type="text" id="edit-stop-reason" class="field w-full p-1.5"></div>
+      <div class="col-span-2">
+        <label class="text-rose-300 block mb-1">停止理由（カテゴリ）</label>
+        <select id="edit-stop-reason-category" class="field w-full p-1.5 mb-1.5"></select>
+        <input type="text" id="edit-stop-reason-detail" placeholder="補足（任意）" class="field w-full p-1.5">
+      </div>
       <div><label class="text-slate-400 block mb-1">開始時間（HH:MM:SS）</label><input type="text" id="edit-start" class="field w-full p-1.5 font-mono"></div>
       <div><label class="text-slate-400 block mb-1">終了時間（HH:MM:SS）</label><input type="text" id="edit-end" class="field w-full p-1.5 font-mono"></div>
       <div><label class="text-slate-400 block mb-1">設定SPM</label><input type="number" step="0.1" id="edit-spm" class="field w-full p-1.5 font-mono"></div>
@@ -392,8 +397,8 @@ tailwind.config = {
     </div>
 
     <div class="mb-5">
-      <p class="text-xs font-black text-slate-300 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-cubes text-emerald-400"></i>品番・作業員マスタ</p>
-      <p class="text-[10px] text-slate-500 mb-2 leading-relaxed">品番・SPM・作業員名は、クラウド上のスプレッドシートの「品番マスタ」「作業員マスタ」シートで一元管理します。Excelのような表形式で管理者が自由に追加・編集でき、この画面から再取得するとiPad側に反映されます。</p>
+      <p class="text-xs font-black text-slate-300 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-cubes text-emerald-400"></i>品番・作業員・停止理由マスタ</p>
+      <p class="text-[10px] text-slate-500 mb-2 leading-relaxed">品番・SPM・作業員名・停止理由カテゴリは、クラウド上のスプレッドシートの各マスタシートで一元管理します。Excelのような表形式で管理者が自由に追加・編集でき、この画面から再取得するとiPad側に反映されます。</p>
       <div class="flex items-center gap-2 flex-wrap">
         <button onclick="fetchMastersFromCloud(true)" class="bg-panel2 hover:bg-slate-700 border border-line text-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-rotate"></i>マスタを再取得</button>
         <span id="settings-master-status" class="text-[10px] text-slate-500"></span>

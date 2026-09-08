@@ -115,12 +115,14 @@ async function fetchMastersFromCloud(showFeedback) {
     if (res && res.status === 'ok') {
       masters.partMasters = Array.isArray(res.partMasters) ? res.partMasters : [];
       masters.operators = Array.isArray(res.operators) ? res.operators : [];
+      masters.stopReasons = Array.isArray(res.stopReasons) ? res.stopReasons : masters.stopReasons;
       masters.lastSyncedAt = new Date().toISOString();
       persistMasters();
       renderPartOptions();
       renderOperatorDatalist();
+      renderStopReasonOptions();
       renderMasterStatus();
-      if (showFeedback) showToast(`マスタデータを更新しました（品番${masters.partMasters.length}件／作業員${masters.operators.length}名）`);
+      if (showFeedback) showToast(`マスタデータを更新しました（品番${masters.partMasters.length}件／作業員${masters.operators.length}名／停止理由${masters.stopReasons.length}件）`);
     } else {
       if (showFeedback) showToast('マスタデータの取得に失敗しました：' + (res && res.message ? res.message : '不明なエラー'), true);
     }

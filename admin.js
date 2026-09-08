@@ -7,6 +7,7 @@ const ADMIN_SETTINGS_KEY = 'pm_admin_settings_v1';
 
 let partWorkbook = null; // { sheetNames, sheets: { name: [[...],[...]] } }
 let opWorkbook = null;
+let reasonWorkbook = null;
 
 window.onload = function () {
   const saved = loadAdminSettings();
@@ -17,12 +18,15 @@ window.onload = function () {
 
   document.getElementById('part-file-input').addEventListener('change', (e) => handleFileSelected(e, 'part'));
   document.getElementById('op-file-input').addEventListener('change', (e) => handleFileSelected(e, 'op'));
+  document.getElementById('reason-file-input').addEventListener('change', (e) => handleFileSelected(e, 'reason'));
 
   document.getElementById('part-sheet-select').addEventListener('change', () => renderPartMappingUI());
   document.getElementById('op-sheet-select').addEventListener('change', () => renderOpMappingUI());
+  document.getElementById('reason-sheet-select').addEventListener('change', () => renderReasonMappingUI());
   document.getElementById('part-col-select').addEventListener('change', () => renderPartPreview());
   document.getElementById('spm-col-select').addEventListener('change', () => renderPartPreview());
   document.getElementById('op-col-select').addEventListener('change', () => renderOpPreview());
+  document.getElementById('reason-col-select').addEventListener('change', () => renderReasonPreview());
 };
 
 /* ---------- 設定の保存（この管理者PC・ブラウザ内のみ） ---------- */
@@ -76,7 +80,7 @@ async function loadCurrentMasters() {
   try {
     const res = await gasRequest({ action: 'getMasters' });
     if (res && res.status === 'ok') {
-      el.innerHTML = `品番マスタ: <span class="text-emerald-400 font-bold">${res.partMasters.length}件</span>　／　作業員マスタ: <span class="text-emerald-400 font-bold">${res.operators.length}名</span>`;
+      el.innerHTML = `品番マスタ: <span class="text-emerald-400 font-bold">${res.partMasters.length}件</span>　／　作業員マスタ: <span class="text-emerald-400 font-bold">${res.operators.length}名</span>　／　停止理由マスタ: <span class="text-emerald-400 font-bold">${(res.stopReasons || []).length}件</span>`;
     } else {
       el.innerHTML = '<span class="text-rose-400">取得に失敗しました</span>';
     }
@@ -119,12 +123,18 @@ function handleFileSelected(e, kind) {
       sel.innerHTML = wb.sheetNames.map(n => `<option value="${escAttr(n)}">${escHtml(n)}</option>`).join('');
       document.getElementById('part-mapping-box').classList.remove('hidden');
       renderPartMappingUI();
-    } else {
+    } else if (kind === 'op') {
       opWorkbook = wb;
       const sel = document.getElementById('op-sheet-select');
       sel.innerHTML = wb.sheetNames.map(n => `<option value="${escAttr(n)}">${escHtml(n)}</option>`).join('');
       document.getElementById('op-mapping-box').classList.remove('hidden');
       renderOpMappingUI();
+    } else {
+      reasonWorkbook = wb;
+      const sel = document.getElementById('reason-sheet-select');
+      sel.innerHTML = wb.sheetNames.map(n => `<option value="${escAttr(n)}">${escHtml(n)}</option>`).join('');
+      document.getElementById('reason-mapping-box').classList.remove('hidden');
+      renderReasonMappingUI();
     }
   }).catch(() => {
     showAlertResult(kind, 'ファイルの読み込みに失敗しました。Excel形式(.xlsx)かご確認ください。', true);
@@ -264,9 +274,66 @@ async function uploadOperatorMaster() {
   }
 }
 
+/* =========================================================
+   停止理由マスタ：マッピングUI
+   ========================================================= */
+function renderReasonMappingUI() {
+  const sheetName = document.getElementById('reason-sheet-select').value;
+  const rows = reasonWorkbook.sheets[sheetName] || [];
+  const headers = rows[0] || [];
+
+  const colOptions = headers.map((h, i) => `<option value="${i}">${escHtml(h || '(列' + (i + 1) + ')')}</option>`).join('');
+  document.getElementById('reason-col-select').innerHTML = colOptions;
+
+  const reasonGuess = guessColumnIndex(headers, ['停止理由カテゴリ', '停止理由', 'カテゴリ', '理由']);
+  document.getElementById('reason-col-select').value = reasonGuess >= 0 ? reasonGuess : 0;
+
+  renderReasonPreview();
+}
+
+function renderReasonPreview() {
+  const sheetName = document.getElementById('reason-sheet-select').value;
+  const rows = reasonWorkbook.sheets[sheetName] || [];
+  const reasonCol = parseInt(document.getElementById('reason-col-select').value);
+
+  const body = rows.slice(1, 9).map(r => `
+    <tr class="border-b border-line"><td class="p-1.5 font-mono text-emerald-300">${escHtml(r[reasonCol])}</td></tr>`).join('');
+
+  document.getElementById('reason-preview-table').innerHTML = `
+    <thead><tr class="bg-panel text-slate-400"><th class="p-1.5 text-left">停止理由カテゴリ（プレビュー）</th></tr></thead>
+    <tbody>${body || '<tr><td class="p-2 text-slate-500">データ行が見つかりません</td></tr>'}</tbody>`;
+}
+
+async function uploadStopReasonMaster() {
+  const sheetName = document.getElementById('reason-sheet-select').value;
+  const rows = reasonWorkbook.sheets[sheetName] || [];
+  const reasonCol = parseInt(document.getElementById('reason-col-select').value);
+
+  const reasons = rows.slice(1).map(r => String(r[reasonCol] ?? '').trim()).filter(r => r);
+
+  if (reasons.length === 0) {
+    showAlertResult('reason', '有効な停止理由がありません。列の選択をご確認ください。', true);
+    return;
+  }
+  if (!getGasUrl()) { showAlertResult('reason', 'Web App URLを入力してください', true); return; }
+
+  showAlertResult('reason', `送信中…（${reasons.length}件）`, false);
+  try {
+    const res = await gasRequest({ action: 'uploadStopReasonMaster', reasons });
+    if (res && res.status === 'ok') {
+      showAlertResult('reason', `反映しました（${res.count}件）。各iPadは自動的に最新化されます。`, false, true);
+    } else {
+      showAlertResult('reason', '反映に失敗しました：' + (res && res.message ? res.message : '不明なエラー'), true);
+    }
+  } catch (e) {
+    showAlertResult('reason', '通信に失敗しました。URLや接続環境をご確認ください。', true);
+  }
+}
+
 /* ---------- 共通ヘルパー ---------- */
 function showAlertResult(kind, message, isError, isSuccess) {
-  const el = document.getElementById(kind === 'part' ? 'part-upload-result' : 'op-upload-result');
+  const idMap = { part: 'part-upload-result', op: 'op-upload-result', reason: 'reason-upload-result' };
+  const el = document.getElementById(idMap[kind] || 'part-upload-result');
   el.className = isError ? 'text-[11px] text-rose-400 font-bold' : (isSuccess ? 'text-[11px] text-emerald-400 font-bold' : 'text-[11px] text-slate-400');
   el.innerText = message;
 }

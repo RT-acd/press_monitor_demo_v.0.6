@@ -66,6 +66,7 @@ window.onload = function () {
   renderEquipmentOptions();
   renderPartOptions();
   renderOperatorDatalist();
+  renderStopReasonOptions();
   renderMasterStatus();
 
   try {
@@ -187,7 +188,7 @@ function renderMasterStatus() {
     el.className = 'text-[10px] text-amber-400';
   } else {
     const d = new Date(masters.lastSyncedAt);
-    el.innerText = `最終更新: ${d.toLocaleString('ja-JP')}（品番${masters.partMasters.length}件／作業員${masters.operators.length}名）`;
+    el.innerText = `最終更新: ${d.toLocaleString('ja-JP')}（品番${masters.partMasters.length}件／作業員${masters.operators.length}名／停止理由${(masters.stopReasons || []).length}件）`;
     el.className = 'text-[10px] text-slate-500';
   }
 }
@@ -240,6 +241,23 @@ function renderOperatorDatalist() {
   const list = masters.operators || [];
   operatorDatalist.innerHTML = list.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
   opSlotInputs.forEach(input => validateOperatorSlot(input)); // マスタ更新後、既存入力を再チェック
+}
+
+/* ---------- 停止理由カテゴリ（マスタ由来） ---------- */
+function renderStopReasonOptions() {
+  const list = (masters.stopReasons && masters.stopReasons.length) ? masters.stopReasons : ['その他'];
+  const optionsHtml = list.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+  const modalSel = document.getElementById('modal-stop-reason-category');
+  const editSel = document.getElementById('edit-stop-reason-category');
+  if (modalSel) { const cur = modalSel.value; modalSel.innerHTML = optionsHtml; if (list.includes(cur)) modalSel.value = cur; }
+  if (editSel) { const cur = editSel.value; editSel.innerHTML = optionsHtml; if (list.includes(cur)) editSel.value = cur; }
+}
+
+/** カテゴリ＋補足から、保存・表示用の結合文字列を作る */
+function combineStopReason(category, detail) {
+  const cat = (category || 'その他').trim();
+  const det = (detail || '').trim();
+  return det ? `${cat}：${det}` : cat;
 }
 function clearOperatorSlotWarning(input) {
   input.classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/40');
@@ -395,7 +413,9 @@ function openEndShiftModal() {
   document.getElementById('modal-actual-count').value = Math.floor(state.accumulatedCount);
   document.getElementById('modal-material-count').value = 0;
   document.getElementById('modal-scrap-count').value = 0;
-  document.getElementById('modal-stop-reason').value = '';
+  renderStopReasonOptions();
+  document.getElementById('modal-stop-reason-category').selectedIndex = 0;
+  document.getElementById('modal-stop-reason-detail').value = '';
   const workerText = getSelectedOperatorsText();
   const workerCount = getSelectedOperatorsCount();
   document.getElementById('modal-worker-preview').innerText = `${workerText}（${workerCount}名）`;
@@ -408,10 +428,11 @@ function confirmEndMfg() {
   const actualCount = parseInt(document.getElementById('modal-actual-count').value) || 0;
   const materialCount = parseInt(document.getElementById('modal-material-count').value) || 0;
   const scrapCount = parseInt(document.getElementById('modal-scrap-count').value) || 0;
-  const stopReason = document.getElementById('modal-stop-reason').value.trim() || 'なし';
+  const stopReasonCategory = document.getElementById('modal-stop-reason-category').value || 'なし';
+  const stopReasonDetail = document.getElementById('modal-stop-reason-detail').value.trim();
 
   closeEndShiftModal();
-  saveCurrentToHistory(actualCount, materialCount, scrapCount, stopReason);
+  saveCurrentToHistory(actualCount, materialCount, scrapCount, stopReasonCategory, stopReasonDetail);
   executeResetSilently();
 }
 
@@ -511,7 +532,7 @@ function updateSegmentStatusLabel() {
 }
 
 
-function saveCurrentToHistory(finalCount, materialCount, scrapCount, stopReason) {
+function saveCurrentToHistory(finalCount, materialCount, scrapCount, stopReasonCategory, stopReasonDetail) {
   const today = new Date();
   const dateStr = today.getFullYear() + '/' + String(today.getMonth() + 1).padStart(2, '0') + '/' + String(today.getDate()).padStart(2, '0');
   const countValue = finalCount ?? Math.floor(state.accumulatedCount);
@@ -536,7 +557,9 @@ function saveCurrentToHistory(finalCount, materialCount, scrapCount, stopReason)
     count: countValue,
     materialCount: materialCount || 0,
     scrapCount: scrapCount || 0,
-    stopReason: stopReason || 'なし',
+    stopReasonCategory: stopReasonCategory || 'なし',
+    stopReasonDetail: stopReasonDetail || '',
+    stopReason: combineStopReason(stopReasonCategory, stopReasonDetail),
     runningSec: Math.floor(state.runningSeconds),
     moldSec: Math.floor(state.moldSeconds),
     breakSec: Math.floor(state.breakSeconds),
@@ -673,7 +696,9 @@ function openEditRecordModal(id) {
   document.getElementById('edit-count').value = rec.count || 0;
   document.getElementById('edit-material-count').value = rec.materialCount || 0;
   document.getElementById('edit-scrap-count').value = rec.scrapCount || 0;
-  document.getElementById('edit-stop-reason').value = rec.stopReason || '';
+  renderStopReasonOptions();
+  document.getElementById('edit-stop-reason-category').value = rec.stopReasonCategory || 'なし';
+  document.getElementById('edit-stop-reason-detail').value = rec.stopReasonDetail || '';
   document.getElementById('edit-spm').value = rec.settingSPM || 15.0;
   document.getElementById('edit-start').value = rec.start || '';
   document.getElementById('edit-end').value = rec.end || '';
@@ -696,7 +721,9 @@ function saveEditedRecord() {
   rec.count = parseInt(document.getElementById('edit-count').value) || 0;
   rec.materialCount = parseInt(document.getElementById('edit-material-count').value) || 0;
   rec.scrapCount = parseInt(document.getElementById('edit-scrap-count').value) || 0;
-  rec.stopReason = document.getElementById('edit-stop-reason').value.trim() || 'なし';
+  rec.stopReasonCategory = document.getElementById('edit-stop-reason-category').value || 'なし';
+  rec.stopReasonDetail = document.getElementById('edit-stop-reason-detail').value.trim();
+  rec.stopReason = combineStopReason(rec.stopReasonCategory, rec.stopReasonDetail);
   rec.settingSPM = (parseFloat(document.getElementById('edit-spm').value) || 0.1).toFixed(1);
   rec.start = document.getElementById('edit-start').value.trim() || rec.start;
   rec.end = document.getElementById('edit-end').value.trim() || rec.end;
@@ -748,17 +775,18 @@ function generateExcelWorkbook(selectedLogs, currentEquip) {
       '総生産数: ' + selectedLogs.reduce((s, r) => s + r.count, 0) + ' pcs',
       '平均性能稼働率: ' + (selectedLogs.reduce((s, r) => s + parseFloat(r.perfRate), 0) / (selectedLogs.length || 1)).toFixed(1) + '%',
     ],
-    ['日付', '設備名', '作業員', '作業人数', '部品番号', '製造開始', '製造終了', '生産数(pcs)', '材料交換(回)', 'スクラップ交換(回)', '停止理由', '実生産稼働時間', '金型交換時間', '計画停止時間', '異常停止時間', '性能稼働率(%)'],
+    ['日付', '設備名', '作業員', '作業人数', '部品番号', '製造開始', '製造終了', '生産数(pcs)', '材料交換(回)', 'スクラップ交換(回)', '停止理由カテゴリ', '停止理由（詳細）', '実生産稼働時間', '金型交換時間', '計画停止時間', '異常停止時間', '性能稼働率(%)'],
   ];
   selectedLogs.forEach(rec => {
     sheetData.push([
       rec.date, rec.equipment || currentEquip, rec.operator || '未選択', rec.workerCount || 1, rec.partNo,
-      rec.start, rec.end, rec.count, rec.materialCount || 0, rec.scrapCount || 0, rec.stopReason || 'なし',
+      rec.start, rec.end, rec.count, rec.materialCount || 0, rec.scrapCount || 0,
+      rec.stopReasonCategory || 'なし', rec.stopReasonDetail || '',
       formatTime(rec.runningSec), formatTime(rec.moldSec), formatTime(rec.breakSec), formatTime(rec.stopSec), parseFloat(rec.perfRate),
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(sheetData);
-  ws['!cols'] = [12,16,18,10,16,12,12,12,12,14,20,14,14,14,14,14].map(w => ({ wch: w }));
+  ws['!cols'] = [12,16,18,10,16,12,12,12,12,14,16,20,14,14,14,14,14].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '作業日報');
 
